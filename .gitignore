@@ -1,0 +1,19 @@
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Model weights (large files)
+weights/*.pt
+weights/*.pth
+
+# Dataset and output
+carla_dataset/
+output_data/
+source_videos/
+
+# IDE
+.vscode/
+.idea/

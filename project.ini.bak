@@ -1,0 +1,30 @@
+# load model
+[load_model]
+model_vehicle_detect = weights/vehicle_detect.pt
+model_plate_detect = weights/plate_detect.pt
+model_plate_number_detect = weights/plate_number_detect.pt
+model_helmet_detect = weights/helmet.pt
+# load video
+[load_video]
+video = source_videos/moto.mp4
+
+# load mask
+[load_mask]
+mask = source_images/maskmoto.png
+
+# init line
+[init_line]
+linex1 = 934
+liney1 = 300
+linex2 = 934
+liney2 = 1080
+
+# destination of result images
+[destination]
+save_image = output_data
+
+# Graphic setting
+[graphic_setting]
+show_vehicle_detect = true
+show_tracking = false
+show_helmet = false

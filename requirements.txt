@@ -1,0 +1,36 @@
+# Traffic Violation Detection — dependencies
+# Install with: pip install -r requirements.txt
+
+# ── Detection & tracking ──────────────────────────────────────────────────────
+yolov5>=7.0.0
+ultralytics>=8.0.0
+boxmot>=10.0.0
+
+# ── Re-ID ─────────────────────────────────────────────────────────────────────
+torchreid>=0.2.5
+tensorboard>=2.14.0
+
+# ── Image processing ──────────────────────────────────────────────────────────
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# ── Deep learning ─────────────────────────────────────────────────────────────
+torch>=2.0.0
+torchvision>=0.15.0
+
+# ── Matching & scoring ────────────────────────────────────────────────────────
+scipy>=1.11.0
+python-Levenshtein>=0.21.0
+
+# ── Database ──────────────────────────────────────────────────────────────────
+mysql-connector-python>=8.1.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+numpy>=1.24.0
+configparser>=5.3.0
+
+# ── CARLA dataset generation (optional) ──────────────────────────────────────
+# carla==0.9.15   # install manually: pip install carla==0.9.15
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest>=7.4.0
