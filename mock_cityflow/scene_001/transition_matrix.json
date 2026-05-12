@@ -1,0 +1,14 @@
+{
+  "scene_001/camera_0001": {
+    "scene_001/camera_0002": {
+      "min_sec": 8.0,
+      "max_sec": 25.0
+    }
+  },
+  "scene_001/camera_0002": {
+    "scene_001/camera_0001": {
+      "min_sec": 8.0,
+      "max_sec": 25.0
+    }
+  }
+}
