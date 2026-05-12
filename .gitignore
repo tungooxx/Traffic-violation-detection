@@ -13,7 +13,17 @@ weights/*.pth
 carla_dataset/
 output_data/
 source_videos/
+carla_demo/
+carla_test*/
+carla_check_road/
+carlaCache/
 
 # IDE
 .vscode/
 .idea/
+
+# Local caches and temp helpers
+.cache/
+.torch/
+_carla_py312/
+_wait_carla.py

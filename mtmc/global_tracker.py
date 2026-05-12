@@ -247,6 +247,7 @@ class GlobalTracker:
                  lpr_confidence_threshold: float = 0.8,
                  match_threshold:          float = 0.50,
                  gallery_ttl:              float = 3600.0,
+                 allow_same_camera_match:  bool = True,
                  weights_plate_visible:    Tuple[float, float, float] = (0.30, 0.50, 0.20),
                  weights_plate_hidden:     Tuple[float, float, float] = (0.70, 0.00, 0.30),
                  frame_width:              int = 1920,
@@ -260,6 +261,7 @@ class GlobalTracker:
         self.lpr_confidence_threshold = lpr_confidence_threshold
         self.match_threshold          = match_threshold
         self.gallery_ttl              = gallery_ttl
+        self.allow_same_camera_match  = allow_same_camera_match
         self.weights_plate_visible    = weights_plate_visible
         self.weights_plate_hidden     = weights_plate_hidden
 
@@ -415,6 +417,10 @@ class GlobalTracker:
                              tracklet: Tracklet,
                              gallery: GalleryEntry) -> float:
         """Compute S_total for a (tracklet, gallery_entry) pair."""
+        if (not self.allow_same_camera_match
+                and tracklet.camera_id == gallery.last_camera):
+            return 0.0
+
         s_reid = self._score_reid(tracklet, gallery)
         s_lpr  = self._score_lpr(tracklet, gallery)
         s_st   = self._score_st(tracklet, gallery)

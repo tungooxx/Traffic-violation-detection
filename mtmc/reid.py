@@ -161,6 +161,8 @@ class VehicleReID:
         tensor   = self._preprocess(crops)
         per_crop = self._forward(tensor)        # (N, EMBEDDING_DIM)
 
+        if aggregation == "none":
+            return per_crop.astype(np.float32)
         if aggregation == "max":
             embedding = per_crop.max(axis=0)
         else:

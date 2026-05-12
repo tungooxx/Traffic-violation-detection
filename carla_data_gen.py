@@ -59,9 +59,27 @@ CAMERA_TRANSFORMS = [
     carla.Transform(carla.Location(x=0,   y=50,  z=8), carla.Rotation(pitch=-20, yaw=270)),
 ]
 
-IMAGE_WIDTH  = 1280
-IMAGE_HEIGHT = 720
+IMAGE_WIDTH  = 854
+IMAGE_HEIGHT = 480
 FOV          = 90
+WARMUP_TICKS = 30
+
+
+def _build_camera_transforms(spawn_points):
+    """Place cameras at real road spawn points for the loaded town."""
+    if not spawn_points:
+        return CAMERA_TRANSFORMS
+
+    camera_transforms = []
+    for spawn_point in spawn_points[:4]:
+        location = spawn_point.location + carla.Location(z=8.0)
+        rotation = carla.Rotation(
+            pitch=-15.0,
+            yaw=spawn_point.rotation.yaw,
+            roll=0.0,
+        )
+        camera_transforms.append(carla.Transform(location, rotation))
+    return camera_transforms
 
 
 # ── Helper: RGB camera sensor callback ───────────────────────────────────────
@@ -73,6 +91,52 @@ def _make_camera_callback(frame_queue: queue.Queue, camera_id: int):
         bgr = array[:, :, :3]          # drop alpha channel
         frame_queue.put((camera_id, image.frame, bgr.copy()))
     return callback
+
+
+def _write_camera_videos(output_path: Path, camera_count: int, fps: float):
+    """Create one MP4 video per camera from saved JPEG frames."""
+    for camera_id in range(camera_count):
+        camera_dir = output_path / f"camera_{camera_id}"
+        frame_paths = sorted(camera_dir.glob("*.jpg"))
+        if not frame_paths:
+            print(f"[WARN] Camera {camera_id}: no frames found, skipping video.")
+            continue
+
+        first_frame = cv2.imread(str(frame_paths[0]))
+        if first_frame is None:
+            print(f"[WARN] Camera {camera_id}: cannot read first frame, skipping video.")
+            continue
+
+        height, width = first_frame.shape[:2]
+        video_path = output_path / f"camera_{camera_id}.mp4"
+        writer = cv2.VideoWriter(
+            str(video_path),
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            fps,
+            (width, height),
+        )
+
+        for frame_path in frame_paths:
+            frame = cv2.imread(str(frame_path))
+            if frame is not None:
+                writer.write(frame)
+        writer.release()
+        print(f"       Camera {camera_id} video: {video_path}")
+
+
+def _warn_if_frame_looks_corrupt(frame_path: Path):
+    frame = cv2.imread(str(frame_path))
+    if frame is None:
+        print(f"[WARN] Could not read saved frame: {frame_path}")
+        return
+
+    row_change = np.mean(np.abs(np.diff(frame.astype(np.float32), axis=0)))
+    col_change = np.mean(np.abs(np.diff(frame.astype(np.float32), axis=1)))
+    if row_change > col_change * 3.0:
+        print(
+            f"[WARN] {frame_path} may be corrupted or striped. "
+            "Fix CARLA rendering before trusting videos."
+        )
 
 
 # ── Helper: bounding-box projection ──────────────────────────────────────────
@@ -163,31 +227,37 @@ def generate(town: str,
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Create per-camera frame directories
-    for i in range(len(CAMERA_TRANSFORMS)):
-        (output_path / f"camera_{i}").mkdir(exist_ok=True)
-
     annotation_file = output_path / "annotations.csv"
     csv_fields = ["frame", "camera_id", "global_vehicle_id", "x1", "y1", "x2", "y2"]
 
     client  = carla.Client(host, port)
-    client.set_timeout(20.0)
-    world   = client.load_world(town)
+    client.set_timeout(120.0)
+    world = client.get_world()
+    current_map = world.get_map().name.rsplit("/", 1)[-1]
+    if current_map != town:
+        world = client.load_world(town)
     traffic_manager = client.get_trafficmanager(8000)
     traffic_manager.set_global_distance_to_leading_vehicle(2.5)
 
     settings = world.get_settings()
+
     settings.synchronous_mode  = True
-    settings.fixed_delta_seconds = 0.05   # 20 FPS
+    settings.fixed_delta_seconds = 0.1    # 10 FPS
     world.apply_settings(settings)
     traffic_manager.set_synchronous_mode(True)
 
     blueprint_library = world.get_blueprint_library()
     spawn_points       = world.get_map().get_spawn_points()
+    camera_transforms  = _build_camera_transforms(spawn_points)
+
+    # Create per-camera frame directories
+    for i in range(len(camera_transforms)):
+        (output_path / f"camera_{i}").mkdir(exist_ok=True)
 
     actor_list = []
     camera_actors = []
     frame_queue   = queue.Queue()
+    videos_written = False
 
     try:
         # ── Spawn cameras ─────────────────────────────────────────────────────
@@ -196,7 +266,7 @@ def generate(town: str,
         cam_bp.set_attribute("image_size_y", str(IMAGE_HEIGHT))
         cam_bp.set_attribute("fov",          str(FOV))
 
-        for i, transform in enumerate(CAMERA_TRANSFORMS):
+        for i, transform in enumerate(camera_transforms):
             cam = world.spawn_actor(cam_bp, transform)
             cam.listen(_make_camera_callback(frame_queue, i))
             camera_actors.append(cam)
@@ -224,8 +294,14 @@ def generate(town: str,
         print(f"[INFO] Spawned {len(spawned_vehicles)} vehicles.")
 
         # ── Record loop ───────────────────────────────────────────────────────
+        print(f"[INFO] Warming up CARLA for {WARMUP_TICKS} ticks before recording.")
+        for _ in range(WARMUP_TICKS):
+            world.tick()
+        while not frame_queue.empty():
+            frame_queue.get_nowait()
+
         total_frames   = int(duration_seconds / settings.fixed_delta_seconds)
-        saved_frames   = {i: 0 for i in range(len(CAMERA_TRANSFORMS))}
+        saved_frames   = {i: 0 for i in range(len(camera_transforms))}
         annotations    = []
 
         print(f"[INFO] Recording {total_frames} ticks (~{duration_seconds}s) …")
@@ -260,7 +336,7 @@ def generate(town: str,
                             "x2": x2, "y2": y2,
                         })
 
-            if tick % 200 == 0:
+            if tick % 20 == 0:
                 elapsed = time.time() - start
                 print(f"  tick {tick}/{total_frames}  ({elapsed:.1f}s elapsed)")
 
@@ -272,10 +348,25 @@ def generate(town: str,
 
         print(f"\n[DONE] Dataset saved to '{output_dir}'")
         print(f"       Annotations: {len(annotations)} rows → {annotation_file}")
-        for i in range(len(CAMERA_TRANSFORMS)):
+        for i in range(len(camera_transforms)):
             print(f"       Camera {i}: {saved_frames[i]} frames")
+            first_frame = output_path / f"camera_{i}" / "000000.jpg"
+            if first_frame.exists():
+                _warn_if_frame_looks_corrupt(first_frame)
+        _write_camera_videos(
+            output_path,
+            len(camera_transforms),
+            fps=1.0 / settings.fixed_delta_seconds,
+        )
+        videos_written = True
 
     finally:
+        if not videos_written:
+            _write_camera_videos(
+                output_path,
+                len(camera_transforms),
+                fps=1.0 / settings.fixed_delta_seconds,
+            )
         # Restore async mode and destroy actors
         settings.synchronous_mode = False
         world.apply_settings(settings)
